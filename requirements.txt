@@ -2,3 +2,4 @@ streamlit
 numpy>=1.26,<2.4
 opencv-python>=4.9
 pillow
+
