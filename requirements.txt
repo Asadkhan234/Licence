@@ -2,9 +2,5 @@ streamlit
 numpy>=1.26,<2.4
 opencv-python>=4.9
 pillow
-
-torch==1.13.1
-torchvision==0.14.1
-
-# YOLO
-ultralytics==8.3.245
+torch
+ultralytics
