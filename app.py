@@ -111,38 +111,72 @@ elif option == "Video":
         tfile.write(uploaded_file.read())
         video_path = tfile.name
 
+        from ultralytics import YOLO
+        model = YOLO("best.pt")  # your trained model
+
         cap = cv2.VideoCapture(video_path)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps == 0:
+            fps = 25
 
+        # ✅ Browser-safe codec
         tmp_out = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        out = cv2.VideoWriter(tmp_out.name, cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
+        fourcc = cv2.VideoWriter_fourcc(*"avc1")
+        out = cv2.VideoWriter(tmp_out.name, fourcc, fps, (width, height))
 
         stframe = st.empty()
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         progress_bar = st.progress(0)
+
+        tracked_ids = set()
+        vehicle_count = 0
+        FRAME_SKIP = 2  # ⚡ speed boost
 
         for i in range(frame_count):
             ret, frame = cap.read()
             if not ret:
                 break
 
+            if i % FRAME_SKIP != 0:
+                continue
+
             # ✅ Convert BGR → RGB
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            results, annotated_frame = detector.predict(rgb_frame)
+            # 🔥 Tracking instead of simple detection
+            results = model.track(rgb_frame, persist=True, conf=0.25)
 
-            # ✅ Write BGR for video file
+            annotated_frame = results[0].plot()
+            annotated_frame = cv2.resize(annotated_frame, (width, height))
+
+            if results[0].boxes.id is not None:
+                ids = results[0].boxes.id.cpu().numpy().astype(int)
+                for tid in ids:
+                    if tid not in tracked_ids:
+                        tracked_ids.add(tid)
+                        vehicle_count += 1
+
+            cv2.putText(
+                annotated_frame,
+                f"Vehicles Counted: {vehicle_count}",
+                (20, 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 255, 0),
+                2,
+            )
+
             out.write(cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR))
-
             stframe.image(annotated_frame, channels="RGB")
             progress_bar.progress((i + 1) / frame_count)
 
         cap.release()
         out.release()
 
-        st.success("Video processing completed!")
+        st.success(f"Video processing completed! Total vehicles: {vehicle_count}")
         st.video(tmp_out.name)
-        st.download_button("Download Annotated Video", tmp_out.name, file_name="annotated_video.mp4")
+        st.download_button("Download Annotated Video", tmp_out.name, file_name="tracked_video.mp4")
+
 
