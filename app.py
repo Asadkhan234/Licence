@@ -111,6 +111,9 @@ elif option == "Video":
         tfile.write(uploaded_file.read())
         video_path = tfile.name
 
+        from ultralytics import YOLO
+        model = YOLO("best.pt")  # your trained model
+
         cap = cv2.VideoCapture(video_path)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -120,23 +123,54 @@ elif option == "Video":
         out = cv2.VideoWriter(tmp_out.name, cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
 
         stframe = st.empty()
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         progress_bar = st.progress(0)
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        tracked_ids = set()
+        vehicle_count = 0
+
+        FRAME_SKIP = 2  # process every 2nd frame → faster
 
         for i in range(frame_count):
             ret, frame = cap.read()
             if not ret:
                 break
 
-            results, annotated_frame = detector.predict(frame)
-            out.write(cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR))
+            if i % FRAME_SKIP != 0:
+                continue
 
-            stframe.image(annotated_frame, channels="RGB")
-            progress_bar.progress((i+1)/frame_count)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # 🔥 TRACKING MODE (ByteTrack)
+            results = model.track(rgb, persist=True, conf=0.25, iou=0.5)
+
+            annotated = results[0].plot()
+
+            if results[0].boxes.id is not None:
+                ids = results[0].boxes.id.cpu().numpy().astype(int)
+                for tid in ids:
+                    if tid not in tracked_ids:
+                        tracked_ids.add(tid)
+                        vehicle_count += 1
+
+            # Overlay count
+            cv2.putText(
+                annotated,
+                f"Vehicles Counted: {vehicle_count}",
+                (20, 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 255, 0),
+                2,
+            )
+
+            out.write(cv2.cvtColor(annotated, cv2.COLOR_RGB2BGR))
+            stframe.image(annotated, channels="RGB")
+            progress_bar.progress((i + 1) / frame_count)
 
         cap.release()
         out.release()
 
-        st.success("Video processing completed!")
+        st.success(f"Video processing completed! Total vehicles: {vehicle_count}")
         st.video(tmp_out.name)
-        st.download_button("Download Annotated Video", tmp_out.name, file_name="annotated_video.mp4")
+        st.download_button("Download Annotated Video", tmp_out.name, file_name="tracked_counted_video.mp4")
