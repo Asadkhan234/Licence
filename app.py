@@ -112,7 +112,7 @@ elif option == "Video":
         video_path = tfile.name
 
         from ultralytics import YOLO
-        model = YOLO("best.pt")  # your trained model
+        model = YOLO("best.pt")
 
         cap = cv2.VideoCapture(video_path)
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -121,9 +121,9 @@ elif option == "Video":
         if fps == 0:
             fps = 25
 
-        # ✅ Browser-safe codec
+        # ✅ Browser + Windows compatible codec
         tmp_out = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        fourcc = cv2.VideoWriter_fourcc(*"avc1")
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         out = cv2.VideoWriter(tmp_out.name, fourcc, fps, (width, height))
 
         stframe = st.empty()
@@ -132,23 +132,16 @@ elif option == "Video":
 
         tracked_ids = set()
         vehicle_count = 0
-        FRAME_SKIP = 2  # ⚡ speed boost
 
         for i in range(frame_count):
             ret, frame = cap.read()
             if not ret:
                 break
 
-            if i % FRAME_SKIP != 0:
-                continue
-
-            # ✅ Convert BGR → RGB
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            # 🔥 Tracking instead of simple detection
-            results = model.track(rgb_frame, persist=True, conf=0.25)
-
+            results = model.track(frame, persist=True, conf=0.25)
             annotated_frame = results[0].plot()
+
+            # ✅ Ensure correct frame size
             annotated_frame = cv2.resize(annotated_frame, (width, height))
 
             if results[0].boxes.id is not None:
@@ -168,8 +161,8 @@ elif option == "Video":
                 2,
             )
 
-            out.write(cv2.cvtColor(annotated_frame, cv2.COLOR_RGB2BGR))
-            stframe.image(annotated_frame, channels="RGB")
+            out.write(annotated_frame)
+            stframe.image(annotated_frame)
             progress_bar.progress((i + 1) / frame_count)
 
         cap.release()
@@ -178,5 +171,6 @@ elif option == "Video":
         st.success(f"Video processing completed! Total vehicles: {vehicle_count}")
         st.video(tmp_out.name)
         st.download_button("Download Annotated Video", tmp_out.name, file_name="tracked_video.mp4")
+
 
 
